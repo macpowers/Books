@@ -273,6 +273,13 @@
   .map-node:hover { border-color: var(--accent); }
   .map-node.node-read { background: #d6e6c6; border-color: #99c179; }
   .map-node.node-locked { background: var(--paper-2); color: var(--muted); cursor: default; opacity: .65; }
+  .map-node-row { display: flex; gap: 8px; align-items: flex-start; }
+  .map-node-cover { width: 32px; height: 46px; object-fit: cover; border-radius: 4px; flex: none; background: var(--paper-2); }
+  .map-node-cover.placeholder {
+    display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif;
+    font-weight: 700; color: var(--muted); font-size: 14px;
+  }
+  .map-node-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .map-node-title { font-weight: 600; font-size: 13px; line-height: 1.25; }
   .map-node-author { font-size: 11px; color: var(--muted); }
   .map-node-badge {
@@ -280,6 +287,29 @@
     color: var(--accent-2); margin-bottom: 2px;
   }
   .map-node-locked-label { font-size: 12px; color: var(--muted); }
+
+  /* ---------- Currently Reading strip ---------- */
+  .reading-strip { margin-bottom: 18px; }
+  .reading-strip-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .reading-strip-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+  .reading-card {
+    flex: none; width: 130px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--card);
+    padding: 8px; cursor: pointer;
+  }
+  .reading-card:hover { border-color: var(--accent); }
+  .reading-card-cover { width: 100%; height: 90px; object-fit: cover; border-radius: 6px; background: var(--paper-2); margin-bottom: 6px; }
+  .reading-card-cover.placeholder {
+    display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif;
+    font-weight: 700; color: var(--muted); font-size: 22px;
+  }
+  .reading-card-title { font-weight: 600; font-size: 12px; line-height: 1.25; margin-bottom: 2px; }
+  .reading-card-author { font-size: 10px; color: var(--muted); margin-bottom: 6px; }
+  .reading-card-track { height: 4px; background: var(--paper-2); border-radius: 3px; overflow: hidden; }
+  .reading-card-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+  .reading-card-pct { font-size: 10px; color: var(--muted); margin-top: 3px; }
 
   /* ---------- Per-book progress (inside modal) ---------- */
   .quest-modal-section {
@@ -339,6 +369,7 @@
     <button class="btn secondary" id="randomBtn">🎲 Pick for me</button>
     <button class="btn secondary" id="batchRateBtn">✨ Auto-rate all</button>
     <button class="btn secondary" id="batchCoverBtn">🖼️ Fetch cover art</button>
+    <button class="btn secondary" id="exportBtn">⬇️ Export backup</button>
     <div class="view-toggle">
       <button class="chip active" id="viewGridBtn">▦ Grid</button>
       <button class="chip" id="viewTableBtn">☰ List</button>
@@ -349,6 +380,8 @@
   <div id="batchProgressSlot"></div>
 
   <div class="chip-row" id="categoryChips"></div>
+
+  <div id="currentlyReadingSlot"></div>
 
   <div class="grid" id="bookGrid"></div>
   <div class="empty-state" id="emptyState" style="display:none;">
@@ -663,6 +696,12 @@ function computeTierDisplay(tierBooks, tierGateUnlocked, seriesUnlockedSet, manu
   return { shown, lockedCount: tierBooks.length - shown.length, gateLocked: false };
 }
 
+function mapNodeCoverHtml(b) {
+  return b.cover_url
+    ? `<img class="map-node-cover" src="${escapeHtml(b.cover_url)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;map-node-cover placeholder&quot;>${(b.title[0] || '?').toUpperCase()}</div>'" />`
+    : `<div class="map-node-cover placeholder">${escapeHtml((b.title[0] || '?').toUpperCase())}</div>`;
+}
+
 function renderMapHtml() {
   const tiered = books.filter(b => b.difficulty_tier);
   const untiered = books.filter(b => !b.difficulty_tier);
@@ -688,9 +727,14 @@ function renderMapHtml() {
       const badge = isSeriesUnlock ? '📖 sequel unlocked' : isManualUnlock ? '✨ ready for this now' : '';
       return `
         <div class="map-node ${b.status === 'read' ? 'node-read' : ''}" data-mapnode="${b.id}">
-          ${badge ? `<div class="map-node-badge">${badge}</div>` : ''}
-          <div class="map-node-title">${escapeHtml(b.title)}</div>
-          <div class="map-node-author">${escapeHtml(b.author || '')}${b.category ? ' · ' + escapeHtml(b.category) : ''}</div>
+          <div class="map-node-row">
+            ${mapNodeCoverHtml(b)}
+            <div class="map-node-info">
+              ${badge ? `<div class="map-node-badge">${badge}</div>` : ''}
+              <div class="map-node-title">${escapeHtml(b.title)}</div>
+              <div class="map-node-author">${escapeHtml(b.author || '')}${b.category ? ' · ' + escapeHtml(b.category) : ''}</div>
+            </div>
+          </div>
         </div>`;
     }).join('');
     if (lockedCount > 0) {
@@ -720,8 +764,13 @@ function renderMapHtml() {
       <div class="map-tier-head"><span class="map-tier-dot" style="background:var(--muted)"></span>Unrated</div>
       <div class="map-nodes">${untieredShown.map(b => `
         <div class="map-node ${b.status === 'read' ? 'node-read' : ''}" data-mapnode="${b.id}">
-          <div class="map-node-title">${escapeHtml(b.title)}</div>
-          <div class="map-node-author">${escapeHtml(b.author || '')}${b.category ? ' · ' + escapeHtml(b.category) : ''}</div>
+          <div class="map-node-row">
+            ${mapNodeCoverHtml(b)}
+            <div class="map-node-info">
+              <div class="map-node-title">${escapeHtml(b.title)}</div>
+              <div class="map-node-author">${escapeHtml(b.author || '')}${b.category ? ' · ' + escapeHtml(b.category) : ''}</div>
+            </div>
+          </div>
         </div>`).join('')}</div>
     </div>` : '';
 
@@ -803,6 +852,39 @@ function renderAll() {
   renderStats();
   renderChips();
   renderGrid();
+  renderCurrentlyReading();
+}
+
+function renderCurrentlyReading() {
+  const slot = document.getElementById('currentlyReadingSlot');
+  const reading = books.filter(b => b.status === 'reading');
+  if (!reading.length) { slot.innerHTML = ''; return; }
+
+  const cardsHtml = reading.map(b => {
+    const total = estimatedTotalMinutes(b);
+    const mins = b.quest_minutes || 0;
+    const pct = Math.min(100, Math.round((mins / total) * 100));
+    const coverHtml = b.cover_url
+      ? `<img class="reading-card-cover" src="${escapeHtml(b.cover_url)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;reading-card-cover placeholder&quot;>${(b.title[0] || '?').toUpperCase()}</div>'" />`
+      : `<div class="reading-card-cover placeholder">${escapeHtml((b.title[0] || '?').toUpperCase())}</div>`;
+    return `
+      <div class="reading-card" data-readingcard="${b.id}">
+        ${coverHtml}
+        <div class="reading-card-title">${escapeHtml(b.title)}</div>
+        <div class="reading-card-author">${escapeHtml(b.author || '')}</div>
+        <div class="reading-card-track"><div class="reading-card-fill" style="width:${pct}%"></div></div>
+        <div class="reading-card-pct">${pct}%</div>
+      </div>`;
+  }).join('');
+
+  slot.innerHTML = `
+    <div class="reading-strip">
+      <div class="reading-strip-title">Currently reading</div>
+      <div class="reading-strip-row">${cardsHtml}</div>
+    </div>`;
+  slot.querySelectorAll('[data-readingcard]').forEach(el => {
+    el.onclick = () => openBookModal(books.find(b => b.id === el.dataset.readingcard));
+  });
 }
 
 // ---------- Modal: Add/Edit Book ----------
@@ -1227,13 +1309,57 @@ function setView(v) {
   document.getElementById('viewMapBtn').classList.toggle('active', v === 'map');
   renderGrid();
 }
+// Which unread books are actually visible/unlocked on the Map right now —
+// used to bias "Pick for me" toward what you could realistically start next,
+// rather than the whole want-to-read backlog including locked/queued books.
+function getMapRevealedIds() {
+  const tiered = books.filter(b => b.difficulty_tier);
+  const seriesSet = computeSeriesUnlocks(books);
+  const manualSet = computeManualUnlocks(books);
+  const revealed = new Set();
+  let prevRatio = 1;
+  for (let t = 1; t <= 7; t++) {
+    const tierBooks = tiered.filter(b => b.difficulty_tier === t);
+    if (!tierBooks.length) continue;
+    const gateUnlocked = t === 1 || prevRatio >= TIER_UNLOCK_THRESHOLD;
+    const readCount = tierBooks.filter(b => b.status === 'read').length;
+    const ratio = tierBooks.length ? readCount / tierBooks.length : 0;
+    const { shown } = computeTierDisplay(tierBooks, gateUnlocked, seriesSet, manualSet);
+    shown.forEach(b => { if (b.status !== 'read') revealed.add(b.id); });
+    prevRatio = gateUnlocked ? ratio : 0;
+  }
+  books.filter(b => !b.difficulty_tier && b.status !== 'read').forEach(b => revealed.add(b.id));
+  return revealed;
+}
+
 document.getElementById('randomBtn').onclick = () => {
-  const pool = filteredSorted().filter(b => b.status === 'want_to_read');
-  const list = pool.length ? pool : filteredSorted();
-  if (!list.length) { toast('No books to pick from'); return; }
-  const pick = list[Math.floor(Math.random() * list.length)];
+  const base = filteredSorted().filter(b => b.status === 'want_to_read');
+  const revealedIds = getMapRevealedIds();
+  const weighted = base.filter(b => revealedIds.has(b.id));
+  const pool = weighted.length ? weighted : (base.length ? base : filteredSorted());
+  if (!pool.length) { toast('No books to pick from'); return; }
+  const pick = pool[Math.floor(Math.random() * pool.length)];
   openBookModal(pick);
   toast(`How about "${pick.title}"?`);
+};
+
+document.getElementById('exportBtn').onclick = () => {
+  if (!books.length) { toast('Nothing to export yet'); return; }
+  const payload = {
+    exported_at: new Date().toISOString(),
+    books,
+    book_prereqs: bookPrereqs,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bookshelf-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('Backup downloaded');
 };
 
 // ---------- Cover art (Open Library, free, no key needed) ----------
