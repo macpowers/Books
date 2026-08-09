@@ -346,6 +346,8 @@
 <main>
   <div id="connBannerSlot"></div>
 
+  <div id="currentlyReadingSlot"></div>
+
   <div class="toolbar">
     <div class="search-wrap">
       <input type="text" id="searchInput" placeholder="Search title or author…" />
@@ -380,8 +382,6 @@
   <div id="batchProgressSlot"></div>
 
   <div class="chip-row" id="categoryChips"></div>
-
-  <div id="currentlyReadingSlot"></div>
 
   <div class="grid" id="bookGrid"></div>
   <div class="empty-state" id="emptyState" style="display:none;">
@@ -819,6 +819,14 @@ function bookCard(b) {
   const coverHtml = b.cover_url
     ? `<img class="book-cover" src="${escapeHtml(b.cover_url)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;book-cover placeholder&quot;>${(b.title[0] || '?').toUpperCase()}</div>'" />`
     : `<div class="book-cover placeholder">${escapeHtml((b.title[0] || '?').toUpperCase())}</div>`;
+  let progressHtml = '';
+  if (b.status === 'reading') {
+    const total = estimatedTotalMinutes(b);
+    const pct = Math.min(100, Math.round(((b.quest_minutes || 0) / total) * 100));
+    progressHtml = `
+      <div class="card-progress-track"><div class="card-progress-fill" style="width:${pct}%"></div></div>
+      <div class="card-progress-pct">${pct}% read</div>`;
+  }
   card.innerHTML = `
     ${b.status === 'read' ? '<div class="read-check">✓</div>' : ''}
     ${coverHtml}
@@ -833,6 +841,7 @@ function bookCard(b) {
           ${b.difficulty_tier ? 'T' + b.difficulty_tier + ' · ' + TIER_LABELS[b.difficulty_tier] : 'Unrated'}
         </span>
       </div>
+      ${progressHtml}
       ${stars ? `<div class="stars">${stars}</div>` : ''}
       ${b.status === 'read' && b.date_finished ? `<div style="font-size:11px; color:var(--muted);">Finished ${new Date(b.date_finished + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>` : ''}
     </div>
@@ -938,6 +947,8 @@ function openBookModal(book) {
       <div id="suggestParamsSlot"></div>
       ` : ''}
 
+      ${!isNew ? `<div id="questModalSlot"></div>` : ''}
+
       <div class="field">
         <label>Title</label>
         <input type="text" id="f_title" value="${escapeHtml(b.title)}" placeholder="Book title" />
@@ -992,8 +1003,6 @@ function openBookModal(book) {
         <label>Notes</label>
         <textarea id="f_notes" rows="3" placeholder="Thoughts, quotes, why you added it…">${escapeHtml(b.notes || '')}</textarea>
       </div>
-
-      ${!isNew ? `<div id="questModalSlot"></div>` : ''}
 
       <div class="modal-actions">
         ${!isNew ? `<button class="btn secondary left" id="deleteBtn" style="color:#8a3b2f; border-color:#8a3b2f;">Delete</button>` : ''}
